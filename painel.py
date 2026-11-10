@@ -2,7 +2,7 @@ import os
 from io import StringIO
 from github import Github
 import pandas as pd
-import plotly.express as px
+import plotly.express as px  # Importação do Plotly adicionada de volta
 import streamlit as st
 import yfinance as yf
 
@@ -11,10 +11,8 @@ st.title("📈 Meu Painel de Investimentos")
 
 ARQUIVO_DADOS = "carteira.csv"
 
-
 def usar_github():
     return "GITHUB_TOKEN" in st.secrets and "GITHUB_REPO" in st.secrets
-
 
 def carregar_carteira():
     if usar_github():
@@ -43,7 +41,6 @@ def carregar_carteira():
     salvar_carteira(dados_iniciais)
     return dados_iniciais
 
-
 def salvar_carteira(df):
     csv_texto = df.to_csv(index=False)
 
@@ -70,7 +67,6 @@ def salvar_carteira(df):
             st.error(f"Erro ao salvar no GitHub: {e}")
 
     df.to_csv(ARQUIVO_DADOS, index=False)
-
 
 @st.cache_data(ttl=300)
 def buscar_dados_ativo(ticker):
@@ -101,7 +97,6 @@ def buscar_dados_ativo(ticker):
         return None, 0.0, 0.0
     except Exception:
         return None, 0.0, 0.0
-
 
 st.sidebar.header("Câmbio e Controles")
 
@@ -255,9 +250,57 @@ else:
     }
 
     st.dataframe(df_estilizado, use_container_width=True, hide_index=True, column_config=cols_cfg)
+    
+    # --- INÍCIO DA SEÇÃO DOS GRÁFICOS ---
+    st.divider()
+    st.subheader("Distribuição da Carteira")
+    
+    col_graf1, col_graf2 = st.columns(2)
+    
+    with col_graf1:
+        # Gráfico por Ativo
+        fig_ativos = px.pie(
+            df_carteira, 
+            values='Atual (R$)', 
+            names='Ticker',
+            title='Distribuição por Ativo',
+            hole=0.4 # Estilo "rosquinha" (donut chart), remova se preferir pizza inteira
+        )
+        # Ajusta a exibição para ficar limpa
+        fig_ativos.update_traces(textposition='inside', textinfo='percent+label')
+        st.plotly_chart(fig_ativos, use_container_width=True)
+        
+    with col_graf2:
+        # Gráfico por Mercado (Nacional vs Exterior)
+        fig_mercados = px.pie(
+            df_carteira, 
+            values='Atual (R$)', 
+            names='Mercado',
+            title='Distribuição por Mercado (Nacional x Exterior)',
+            hole=0.4,
+            color='Mercado',
+            color_discrete_map={
+                'Brasil (Nacional)': '#009b3a', 
+                'Exterior (Internacional)': '#002868'
+            }
+        )
+        fig_mercados.update_traces(textposition='inside', textinfo='percent+label')
+        st.plotly_chart(fig_mercados, use_container_width=True)
+    # --- FIM DA SEÇÃO DOS GRÁFICOS ---
 
     with st.expander("🗑️ Remover um ativo da carteira"):
         ativo_remover = st.selectbox("Selecione o ativo:", ["Selecione..."] + df_carteira["Ticker"].tolist())
         if ativo_remover != "Selecione...":
             if st.button("Confirmar Remoção"):
-                df_carteira = df_carteira[df_carteira["Ticker"] != ativo_remover]
+                # 1. Carrega a carteira original apenas com as colunas base
+                df_atual = carregar_carteira()
+                
+                # 2. Filtra removendo o ativo selecionado
+                df_atual = df_atual[df_atual["Ticker"] != ativo_remover]
+                
+                # 3. Salva a carteira atualizada no CSV/GitHub
+                salvar_carteira(df_atual)
+                
+                # 4. Exibe mensagem e recarrega a página para atualizar os dados
+                st.success(f"Ativo {ativo_remover} removido com sucesso!")
+                st.rerun()
